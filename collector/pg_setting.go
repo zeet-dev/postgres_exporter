@@ -1,4 +1,4 @@
-// Copyright 2021 The Prometheus Authors
+// Copyright 2023 The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -11,17 +11,35 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package collector
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"strconv"
 	"strings"
 
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 )
+
+const settingSubsystem = "setting"
+
+func init() {
+	registerCollector(settingSubsystem, defaultEnabled, NewPGSettingCollector)
+}
+
+type PGSettingCollector struct {
+	log log.Logger
+}
+
+func NewPGSettingCollector(config collectorConfig) (Collector, error) {
+	return &PGSettingCollector{
+		log: config.logger,
+	}, nil
+}
 
 var (
 	settingUnits = []string{
@@ -31,8 +49,8 @@ var (
 )
 
 // Query the pg_settings view containing runtime variables
-func querySettings(ch chan<- prometheus.Metric, server *Server) error {
-	level.Debug(logger).Log("msg", "Querying pg_setting view", "server", server)
+func querySettings(ch chan<- prometheus.Metric, instance *instance, logger log.Logger) error {
+	level.Debug(logger).Log("msg", "Querying pg_setting view", "instance", instance)
 
 	// pg_settings docs: https://www.postgresql.org/docs/current/static/view-pg-settings.html
 	//
@@ -40,9 +58,9 @@ func querySettings(ch chan<- prometheus.Metric, server *Server) error {
 	// types in normaliseUnit() below
 	query := "SELECT name, setting, COALESCE(unit, ''), short_desc, vartype FROM pg_settings WHERE vartype IN ('bool', 'integer', 'real') AND name != 'sync_commit_cancel_wait';"
 
-	rows, err := server.db.Query(query)
+	rows, err := instance.db.Query(query)
 	if err != nil {
-		return fmt.Errorf("Error running query on database %q: %s %v", server, namespace, err)
+		return fmt.Errorf("Error running query on database %q: %s %v", instance, namespace, err)
 	}
 	defer rows.Close() // nolint: errcheck
 
@@ -50,13 +68,17 @@ func querySettings(ch chan<- prometheus.Metric, server *Server) error {
 		s := &pgSetting{}
 		err = rows.Scan(&s.name, &s.setting, &s.unit, &s.shortDesc, &s.vartype)
 		if err != nil {
-			return fmt.Errorf("Error retrieving rows on %q: %s %v", server, namespace, err)
+			return fmt.Errorf("Error retrieving rows on %q: %s %v", instance, namespace, err)
 		}
 
-		ch <- s.metric(server.labels)
+		ch <- s.metric(prometheus.Labels{})
 	}
 
 	return nil
+}
+
+func (c *PGSettingCollector) Update(ctx context.Context, instance *instance, ch chan<- prometheus.Metric) error {
+	return querySettings(ch, instance, c.log)
 }
 
 // pgSetting is represents a PostgreSQL runtime variable as returned by the
@@ -96,7 +118,16 @@ func (s *pgSetting) metric(labels prometheus.Labels) prometheus.Metric {
 		panic(fmt.Sprintf("Unsupported vartype %q", s.vartype))
 	}
 
-	desc := newDesc(subsystem, name, shortDesc, labels)
+	desc := prometheus.NewDesc(
+		prometheus.BuildFQName(
+			namespace,
+			subsystem,
+			name,
+		),
+		shortDesc,
+		[]string{}, labels,
+	)
+
 	return prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, val)
 }
 

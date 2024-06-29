@@ -19,10 +19,10 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/prometheus-community/postgres_exporter/collector"
-	"github.com/prometheus-community/postgres_exporter/config"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/zeet-dev/postgres_exporter/collector"
+	"github.com/zeet-dev/postgres_exporter/config"
 )
 
 func handleProbe(logger log.Logger, excludeDatabases []string) http.HandlerFunc {

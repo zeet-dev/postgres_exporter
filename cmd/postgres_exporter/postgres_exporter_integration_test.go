@@ -89,7 +89,7 @@ func (s *IntegrationSuite) TestAllNamespacesReturnResults(c *C) {
 }
 
 // TestInvalidDsnDoesntCrash tests that specifying an invalid DSN doesn't crash
-// the exporter. Related to https://github.com/prometheus-community/postgres_exporter/issues/93
+// the exporter. Related to https://github.com/zeet-dev/postgres_exporter/issues/93
 // although not a replication of the scenario.
 func (s *IntegrationSuite) TestInvalidDsnDoesntCrash(c *C) {
 	// Setup a dummy channel to consume metrics
